@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FoodRescue — Surplus Food Redistribution</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Nunito+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#16a34a;--green-light:#dcfce7;--green-mid:#86efac;
+  --bg:#f8faf5;--bg2:#ffffff;--bg3:#f1f5f0;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.14);
+  --text:#1a2e1a;--text2:#4a6741;--text3:#8aa882;
+  --font:'Nunito',system-ui,sans-serif;
+  --font2:'Nunito Sans',system-ui,sans-serif;
+  --r:14px;--rs:8px;--shadow:0 2px 12px rgba(0,0,0,0.08);
+}
+body{font-family:var(--font2);background:var(--bg);color:var(--text);min-height:100vh;font-size:15px}
+.app{display:grid;grid-template-rows:auto auto 1fr;height:100vh;overflow:hidden}
+.main{display:grid;grid-template-columns:380px 1fr;flex:1;overflow:hidden;min-height:0}
+@media(max-width:768px){.main{grid-template-columns:1fr}.map-wrap{display:none}}
+header{background:var(--green);color:white;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:56px;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-icon{font-size:22px}
+.brand-name{font-size:18px;font-weight:800;letter-spacing:-0.3px}
+.brand-tagline{font-size:11px;opacity:0.75;letter-spacing:0.3px}
+.header-actions{display:flex;gap:8px}
+.locate-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:white;font-family:var(--font);font-size:12px;padding:6px 12px;border-radius:20px;cursor:pointer;transition:background .2s}
+.locate-btn:hover{background:rgba(255,255,255,0.25)}
+.stats-bar{background:var(--green);border-top:1px solid rgba(255,255,255,0.15);padding:0 20px 12px;display:flex;gap:24px;flex-shrink:0}
+#stats-bar{display:flex;gap:24px}
+.stat{display:flex;flex-direction:column;align-items:center;gap:1px}
+.stat-num{font-size:20px;font-weight:800;color:white;line-height:1}
+.stat-label{font-size:10px;color:rgba(255,255,255,0.7);letter-spacing:0.5px;text-transform:uppercase}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.tab-btn{flex:1;padding:12px 8px;font-family:var(--font);font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;color:var(--text3);transition:all .2s;border-bottom:2px solid transparent}
+.tab-btn:hover{color:var(--text);background:var(--bg3)}
+.tab-btn.active{color:var(--green);border-bottom-color:var(--green);background:var(--green-light)}
+.panel{flex:1;overflow-y:auto;padding:16px}
+.panel.hidden{display:none}
+.filter-row{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.filter-btn{font-size:11px;font-weight:600;padding:5px 11px;border-radius:20px;border:1px solid var(--border2);background:none;cursor:pointer;color:var(--text2);transition:all .2s}
+.filter-btn:hover{border-color:var(--green);color:var(--green)}
+.filter-btn.active{background:var(--green);color:white;border-color:var(--green)}
+.listing-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;transition:box-shadow .2s,transform .15s}
+.listing-card:hover{box-shadow:var(--shadow);transform:translateY(-1px)}
+.listing-card.card-claimed{opacity:0.65;border-style:dashed}
+.listing-card.card-expired{opacity:0.5}
+.listing-card.card-urgent{border-color:#f97316;border-left:3px solid #f97316}
+.card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+.card-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.card-info{flex:1;min-width:0}
+.card-title{font-size:14px;font-weight:700;color:var(--text);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-sub{font-size:11px;color:var(--text3);margin-top:1px}
+.card-locate{background:none;border:1px solid var(--border);border-radius:var(--rs);padding:5px 8px;cursor:pointer;font-size:13px;transition:background .15s;flex-shrink:0}
+.card-locate:hover{background:var(--bg3)}
+.card-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.tag{font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;background:var(--bg3);color:var(--text2)}
+.tag-qty{background:#eff6ff;color:#1d4ed8}
+.tag-urgent{background:#fff7ed;color:#c2410c;animation:pulse 2s infinite}
+.tag-expired{background:#fef2f2;color:#991b1b}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+.card-desc{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px}
+.card-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-address{font-size:11px;color:var(--text3);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-claim-btn{background:var(--green);color:white;border:none;font-family:var(--font);font-size:12px;font-weight:700;padding:6px 14px;border-radius:20px;cursor:pointer;transition:background .2s;white-space:nowrap}
+.card-claim-btn:hover{background:#15803d}
+.card-claimed-label{font-size:11px;color:#16a34a;font-weight:600}
+.card-expired-label{font-size:11px;color:#dc2626;font-weight:600}
+.empty-state{text-align:center;padding:40px 20px;color:var(--text3);font-size:28px;line-height:1.8}
+.empty-state span{font-size:13px;display:block;margin-top:6px}
+.form-group{margin-bottom:14px}
+.form-label{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:5px;display:block;letter-spacing:0.3px;text-transform:uppercase}
+.form-input,.form-select,.form-textarea{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--font2);font-size:14px;padding:9px 12px;border-radius:var(--rs);outline:none;transition:border-color .2s}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(22,163,74,0.1)}
+.form-textarea{resize:vertical;min-height:80px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.location-row{display:flex;gap:8px;align-items:flex-end}
+.location-row .form-input{flex:1}
+.use-loc-btn{background:var(--green-light);border:1px solid var(--green-mid);color:var(--green);font-family:var(--font);font-size:12px;font-weight:700;padding:9px 12px;border-radius:var(--rs);cursor:pointer;white-space:nowrap}
+.location-status{font-size:11px;color:var(--green);margin-top:4px;min-height:16px}
+.submit-btn{width:100%;background:var(--green);color:white;border:none;font-family:var(--font);font-size:15px;font-weight:800;padding:13px;border-radius:var(--r);cursor:pointer;transition:background .2s;margin-top:6px}
+.submit-btn:hover{background:#15803d}
+.form-hint{font-size:11px;color:var(--text3);margin-top:4px}
+.map-wrap{flex:1;position:relative}
+#map{width:100%;height:100%}
+.popup-card{font-family:var(--font2);min-width:220px}
+.popup-header{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px}
+.popup-emoji{font-size:24px;flex-shrink:0}
+.popup-title{font-size:14px;font-weight:700;color:#1a2e1a;line-height:1.3}
+.popup-meta{font-size:11px;color:#6b7280;margin-top:2px}
+.popup-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.popup-desc{font-size:12px;color:#4b5563;line-height:1.5;margin-bottom:8px}
+.popup-address{font-size:11px;color:#6b7280;margin-bottom:10px}
+.popup-claim-btn{width:100%;background:#16a34a;color:white;border:none;font-size:13px;font-weight:700;padding:8px;border-radius:8px;cursor:pointer}
+.popup-claim-btn:hover{background:#15803d}
+.popup-claimed-by,.popup-expired-msg{font-size:12px;font-weight:600;text-align:center;padding:6px;border-radius:6px}
+.popup-claimed-by{color:#16a34a;background:#f0fdf4}
+.popup-expired-msg{color:#dc2626;background:#fef2f2}
+.leaflet-popup-content-wrapper{border-radius:12px!important;box-shadow:0 4px 20px rgba(0,0,0,0.15)!important}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-backdrop.hidden{display:none}
+.modal{background:white;border-radius:20px;padding:28px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.2)}
+.modal-title{font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px}
+.modal-listing-title{font-size:15px;font-weight:700;color:var(--green);margin-bottom:4px}
+.modal-listing-info{font-size:12px;color:var(--text3);margin-bottom:20px}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.modal-cancel{flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-family:var(--font);font-size:14px;font-weight:700;padding:11px;border-radius:var(--rs);cursor:pointer}
+.modal-confirm{flex:2;background:var(--green);color:white;border:none;font-family:var(--font);font-size:14px;font-weight:800;padding:11px;border-radius:var(--rs);cursor:pointer}
+.modal-confirm:hover{background:#15803d}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:#1a2e1a;color:white;padding:12px 22px;border-radius:30px;font-size:13px;font-weight:600;z-index:99999;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast-success{background:#16a34a}
+.toast-error{background:#dc2626}
+.toast-info{background:#1d4ed8}
+.about-panel{line-height:1.8;color:var(--text2);font-size:14px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <span class="brand-icon">🍱</span>
+      <div>
+        <div class="brand-name">FoodRescue</div>
+        <div class="brand-tagline">SDG 2 · Zero Hunger · Bengaluru</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="locate-btn" id="locate-me">📍 Near Me</button>
+    </div>
+  </header>
+  <div class="stats-bar"><div id="stats-bar"></div></div>
+  <div class="main">
+    <div class="sidebar">
+      <div class="tabs">
+        <button class="tab-btn active" data-panel="feed">🗂 Listings</button>
+        <button class="tab-btn" data-panel="post">➕ Post Food</button>
+        <button class="tab-btn" data-panel="about">ℹ️ About</button>
+      </div>
+      <div class="panel" id="panel-feed">
+        <div class="filter-row">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="available">Available</button>
+          <button class="filter-btn" data-filter="claimed">Claimed</button>
+        </div>
+        <div id="listings-feed"></div>
+      </div>
+      <div class="panel hidden" id="panel-post">
+        <form id="post-form">
+          <div class="form-group"><label class="form-label">Food Title *</label><input class="form-input" id="f-title" type="text" placeholder="e.g. Leftover Biryani & Dal" required/></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Category *</label><select class="form-select" id="f-category"></select></div>
+            <div class="form-group"><label class="form-label">You are a *</label><select class="form-select" id="f-poster-type"></select></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Quantity *</label><input class="form-input" id="f-quantity" type="text" placeholder="e.g. 10 portions" required/></div>
+            <div class="form-group"><label class="form-label">Expires in (hours)</label><input class="form-input" id="f-expires" type="number" min="1" max="48" value="4"/></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Your Name *</label><input class="form-input" id="f-name" type="text" placeholder="Name / Org name" required/></div>
+            <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="f-phone" type="tel" placeholder="10-digit number"/></div>
+          </div>
+          <div class="form-group"><label class="form-label">Address *</label><input class="form-input" id="f-address" type="text" placeholder="Area, City" required/></div>
+          <div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="f-desc" placeholder="What's included? Veg/non-veg? Any allergens?"></textarea></div>
+          <div class="form-group">
+            <label class="form-label">Location (for map pin)</label>
+            <div class="location-row">
+              <input class="form-input" id="f-lat" type="text" placeholder="Latitude"/>
+              <input class="form-input" id="f-lon" type="text" placeholder="Longitude"/>
+              <button type="button" class="use-loc-btn" id="use-location">📍 Use Mine</button>
+            </div>
+            <div class="location-status" id="location-status"></div>
+            <p class="form-hint">Click "Use Mine" to auto-fill your GPS coordinates</p>
+          </div>
+          <button type="submit" class="submit-btn">🍱 Post Food Listing</button>
+        </form>
+      </div>
+      <div class="panel hidden about-panel" id="panel-about">
+        <p style="font-size:22px;margin-bottom:12px">🍱</p>
+        <p style="font-weight:800;font-size:17px;color:var(--text);margin-bottom:10px">FoodRescue India</p>
+        <p style="margin-bottom:14px">Connecting surplus food with people who need it — reducing waste and hunger one meal at a time.</p>
+        <p style="font-weight:700;color:var(--text);margin-bottom:8px">How it works:</p>
+        <p style="margin-bottom:6px">🍴 <strong>Restaurants, households & caterers</strong> post surplus food with location & expiry time.</p>
+        <p style="margin-bottom:6px">🙋 <strong>NGOs & volunteers</strong> browse the map and claim listings before they expire.</p>
+        <p style="margin-bottom:16px">✅ <strong>Food gets rescued</strong> instead of going to waste.</p>
+        <p style="font-weight:700;color:var(--text);margin-bottom:6px">UN SDGs:</p>
+        <p>🟡 SDG 2 — Zero Hunger<br>🟢 SDG 12 — Responsible Consumption<br>🔵 SDG 11 — Sustainable Cities</p>
+      </div>
+    </div>
+    <div class="map-wrap"><div id="map"></div></div>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="claim-modal">
+  <div class="modal">
+    <div class="modal-title">🙋 Claim This Food</div>
+    <div class="modal-listing-title" id="claim-listing-title"></div>
+    <div class="modal-listing-info" id="claim-listing-info"></div>
+    <div class="form-group"><label class="form-label">Your Name / Organisation *</label><input class="form-input" id="claim-name" type="text" placeholder="e.g. Akshaya Patra / Your name"/></div>
+    <div class="form-group"><label class="form-label">Phone</label><input class="form-input" id="claim-phone" type="tel" placeholder="10-digit number"/></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="claim-cancel">Cancel</button>
+      <button class="modal-confirm" id="claim-confirm">✅ Confirm Claim</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const DEFAULT_CENTER = [12.9716, 77.5946];
+const STORAGE_KEY = "foodrescue_listings";
+
+const CATEGORIES = [
+  {id:"cooked",   label:"Cooked Food",   emoji:"🍱", color:"#f97316"},
+  {id:"produce",  label:"Fresh Produce", emoji:"🥦", color:"#22c55e"},
+  {id:"packaged", label:"Packaged Food", emoji:"📦", color:"#3b82f6"},
+  {id:"bakery",   label:"Bakery Items",  emoji:"🍞", color:"#f59e0b"},
+  {id:"dairy",    label:"Dairy",         emoji:"🥛", color:"#8b5cf6"},
+  {id:"other",    label:"Other",         emoji:"🍽️", color:"#6b7280"},
+];
+
+const POSTER_TYPES = [
+  {id:"restaurant",label:"Restaurant",   emoji:"🍴"},
+  {id:"household", label:"Household",    emoji:"🏠"},
+  {id:"caterer",   label:"Caterer/Event",emoji:"🎉"},
+  {id:"store",     label:"Grocery Store",emoji:"🏪"},
+];
+
+const SAMPLE_LISTINGS = [
+  {id:"s1",title:"Leftover Biryani & Dal",category:"cooked",quantity:"15 portions",posterType:"restaurant",posterName:"Spice Garden Restaurant",phone:"9876543210",address:"Koramangala, Bengaluru",lat:12.9279,lon:77.6271,expiresAt:Date.now()+4*3600000,postedAt:Date.now()-1800000,claimed:false,claimedBy:null,description:"Fresh biryani and dal from today's lunch service. Halal."},
+  {id:"s2",title:"Fresh Vegetables & Fruits",category:"produce",quantity:"~5 kg mixed",posterType:"store",posterName:"Nature's Basket MG Road",phone:"9123456789",address:"MG Road, Bengaluru",lat:12.9757,lon:77.6072,expiresAt:Date.now()+8*3600000,postedAt:Date.now()-3600000,claimed:false,claimedBy:null,description:"End of day produce — tomatoes, spinach, bananas, apples."},
+  {id:"s3",title:"Wedding Feast Leftovers",category:"cooked",quantity:"50+ portions",posterType:"caterer",posterName:"Raj Caterers",phone:"9988776655",address:"Indiranagar, Bengaluru",lat:12.9784,lon:77.6408,expiresAt:Date.now()+2*3600000,postedAt:Date.now()-600000,claimed:false,claimedBy:null,description:"Rice, paneer curry, sweets from evening wedding. Pure veg."},
+  {id:"s4",title:"Bread & Pastries",category:"bakery",quantity:"30 items",posterType:"store",posterName:"Daily Bread Bakery",phone:"9234567890",address:"Jayanagar, Bengaluru",lat:12.9308,lon:77.5838,expiresAt:Date.now()+6*3600000,postedAt:Date.now()-7200000,claimed:true,claimedBy:"Akshaya Patra Foundation",description:"Day-old bread loaves, croissants and muffins."},
+  {id:"s5",title:"Home Cooked Meals",category:"cooked",quantity:"8 portions",posterType:"household",posterName:"Priya Sharma",phone:"9345678901",address:"HSR Layout, Bengaluru",lat:12.9116,lon:77.6474,expiresAt:Date.now()+3*3600000,postedAt:Date.now()-900000,claimed:false,claimedBy:null,description:"Sambar rice, rasam, papad. South Indian veg meals."},
+];
+
+// ── DATA ──────────────────────────────────────────────────────────────────────
+let listings = [];
+let listeners = [];
+let map, markers = {}, currentFilter = "all";
+
+function initData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    listings = raw ? JSON.parse(raw).filter(l => l.expiresAt > Date.now()-86400000) : [...SAMPLE_LISTINGS];
+  }catch(_){ listings = [...SAMPLE_LISTINGS]; }
+  save();
+}
+
+function save(){ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(listings));}catch(_){} }
+function notify(){ listeners.forEach(fn => fn(listings)); }
+function subscribe(fn){ listeners.push(fn); fn(listings); }
+
+function classify(v){ return CATEGORIES.find(c=>c.id===v)??CATEGORIES.at(-1); }
+
+function timeLeft(exp){
+  const d = exp - Date.now();
+  if(d<=0) return "Expired";
+  const h=Math.floor(d/3600000),m=Math.floor((d%3600000)/60000);
+  return h>0?`${h}h ${m}m left`:`${m}m left`;
+}
+
+function timeAgo(ts){
+  const d=Date.now()-ts,m=Math.floor(d/60000);
+  if(m<1)return"Just now";if(m<60)return`${m}m ago`;
+  const h=Math.floor(m/60);return h<24?`${h}h ago`:`${Math.floor(h/24)}d ago`;
+}
+
+function addListing(data){
+  const l={...data,id:"u"+Date.now(),postedAt:Date.now(),claimed:false,claimedBy:null};
+  listings.unshift(l); save(); notify(); return l;
+}
+
+function claimListing(id,by){
+  const l=listings.find(l=>l.id===id);
+  if(!l||l.claimed)return false;
+  l.claimed=true;l.claimedBy=by;l.claimedAt=Date.now();
+  save();notify();return true;
+}
+
+function getStats(){
+  return{
+    active:listings.filter(l=>!l.claimed&&l.expiresAt>Date.now()).length,
+    claimed:listings.filter(l=>l.claimed).length,
+    total:listings.length,
+    portions:listings.reduce((s,l)=>{const n=parseInt(l.quantity);return s+(isNaN(n)?0:n);},0)
+  };
+}
+
+// ── MAP ───────────────────────────────────────────────────────────────────────
+function initMap(){
+  map = L.map("map",{zoomControl:false}).setView(DEFAULT_CENTER,12);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>',maxZoom:19
+  }).addTo(map);
+  L.control.zoom({position:"bottomright"}).addTo(map);
+}
+
+function createIcon(cat,claimed){
+  const c=classify(cat);
+  const color=claimed?"#9ca3af":c.color;
+  const svg=`<svg width="40" height="48" viewBox="0 0 40 48" xmlns="http://www.w3.org/2000/svg"><filter id="sh"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.25"/></filter><path d="M20 2C11.163 2 4 9.163 4 18c0 12 16 28 16 28s16-16 16-28C36 9.163 28.837 2 20 2z" fill="${color}" filter="url(#sh)" opacity="${claimed?0.5:1}"/><circle cx="20" cy="18" r="10" fill="white" opacity="0.9"/><text x="20" y="23" text-anchor="middle" font-size="13">${c.emoji}</text></svg>`;
+  return L.divIcon({html:svg,className:"",iconSize:[40,48],iconAnchor:[20,48],popupAnchor:[0,-48]});
+}
+
+function buildPopup(l){
+  const cat=classify(l.category),tl=timeLeft(l.expiresAt),ta=timeAgo(l.postedAt),exp=l.expiresAt<=Date.now();
+  return `<div class="popup-card"><div class="popup-header"><span class="popup-emoji">${cat.emoji}</span><div><div class="popup-title">${l.title}</div><div class="popup-meta">${l.posterName} · ${ta}</div></div></div><div class="popup-tags"><span class="tag tag-qty">📦 ${l.quantity}</span><span class="tag ${exp?"tag-expired":""}">${exp?"⛔ Expired":"⏱ "+tl}</span>${l.claimed?'<span class="tag">✅ Claimed</span>':""}</div><p class="popup-desc">${l.description}</p><div class="popup-address">📍 ${l.address}</div>${!l.claimed&&!exp?`<button class="popup-claim-btn" data-id="${l.id}">🙋 Claim This Food</button>`:l.claimed?`<div class="popup-claimed-by">✅ Claimed by ${l.claimedBy}</div>`:'<div class="popup-expired-msg">⛔ This listing has expired</div>'}</div>`;
+}
+
+function updateMarkers(ls){
+  if(!map)return;
+  const ids=new Set(ls.map(l=>l.id));
+  Object.keys(markers).forEach(id=>{if(!ids.has(id)){map.removeLayer(markers[id]);delete markers[id];}});
+  ls.forEach(l=>{
+    if(!l.lat||!l.lon)return;
+    if(markers[l.id]){markers[l.id].setIcon(createIcon(l.category,l.claimed));markers[l.id].getPopup()?.setContent(buildPopup(l));}
+    else{
+      const m=L.marker([l.lat,l.lon],{icon:createIcon(l.category,l.claimed)});
+      m.bindPopup(buildPopup(l),{maxWidth:280});
+      m.on("popupopen",()=>{
+        const btn=document.querySelector(".popup-claim-btn");
+        if(btn) btn.addEventListener("click",()=>openClaimModal(btn.dataset.id));
+      });
+      m.addTo(map);markers[l.id]=m;
+    }
+  });
+}
+
+function flyTo(l){
+  if(!map||!l.lat)return;
+  map.flyTo([l.lat,l.lon],15,{duration:1});
+  setTimeout(()=>markers[l.id]?.openPopup(),1000);
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderStats(){
+  const s=getStats();
+  document.getElementById("stats-bar").innerHTML=`
+    <div class="stat"><span class="stat-num">${s.active}</span><span class="stat-label">Available</span></div>
+    <div class="stat"><span class="stat-num">${s.claimed}</span><span class="stat-label">Claimed</span></div>
+    <div class="stat"><span class="stat-num">${s.total}</span><span class="stat-label">Total Posts</span></div>
+    <div class="stat"><span class="stat-num">${s.portions}+</span><span class="stat-label">Portions</span></div>`;
+}
+
+function renderFeed(filter){
+  const feed=document.getElementById("listings-feed");
+  let fl=listings.filter(l=>l.expiresAt>Date.now()-3600000);
+  if(filter==="available") fl=listings.filter(l=>!l.claimed&&l.expiresAt>Date.now());
+  else if(filter==="claimed") fl=listings.filter(l=>l.claimed);
+  if(!fl.length){feed.innerHTML='<div class="empty-state">🍽️<br><span>No listings. Be the first to post!</span></div>';return;}
+  feed.innerHTML=fl.map(l=>{
+    const cat=classify(l.category),tl=timeLeft(l.expiresAt),ta=timeAgo(l.postedAt),exp=l.expiresAt<=Date.now(),urg=!l.claimed&&!exp&&(l.expiresAt-Date.now())<2*3600000;
+    return `<div class="listing-card${l.claimed?" card-claimed":""}${exp?" card-expired":""}${urg?" card-urgent":""}">
+      <div class="card-top"><div class="card-icon" style="background:${cat.color}22;color:${cat.color}">${cat.emoji}</div><div class="card-info"><div class="card-title">${l.title}</div><div class="card-sub">${l.posterName} · ${ta}</div></div><button class="card-locate" data-id="${l.id}">📍</button></div>
+      <div class="card-tags"><span class="tag" style="background:${cat.color}18;color:${cat.color}">${cat.label}</span><span class="tag tag-qty">📦 ${l.quantity}</span><span class="tag${urg?" tag-urgent":""}${exp?" tag-expired":""}">${exp?"⛔ Expired":"⏱ "+tl}</span></div>
+      <p class="card-desc">${l.description}</p>
+      <div class="card-footer"><span class="card-address">📍 ${l.address}</span>${!l.claimed&&!exp?`<button class="card-claim-btn" data-id="${l.id}">🙋 Claim</button>`:l.claimed?`<span class="card-claimed-label">✅ ${l.claimedBy}</span>`:'<span class="card-expired-label">⛔ Expired</span>'}</div>
+    </div>`;
+  }).join("");
+  feed.querySelectorAll(".card-locate").forEach(b=>b.addEventListener("click",()=>{const l=listings.find(x=>x.id===b.dataset.id);if(l)flyTo(l);}));
+  feed.querySelectorAll(".card-claim-btn").forEach(b=>b.addEventListener("click",()=>openClaimModal(b.dataset.id)));
+}
+
+// ── CLAIM MODAL ───────────────────────────────────────────────────────────────
+function openClaimModal(id){
+  const l=listings.find(x=>x.id===id);if(!l)return;
+  document.getElementById("claim-listing-title").textContent=l.title;
+  document.getElementById("claim-listing-info").textContent=`${l.quantity} · ${l.address} · ⏱ ${timeLeft(l.expiresAt)}`;
+  document.getElementById("claim-modal").dataset.listingId=id;
+  document.getElementById("claim-modal").classList.remove("hidden");
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function showToast(msg,type="info"){
+  const t=document.getElementById("toast");
+  t.textContent=msg;t.className=`toast toast-${type} show`;
+  setTimeout(()=>t.classList.remove("show"),3500);
+}
+
+// ── SWITCH PANEL ──────────────────────────────────────────────────────────────
+function switchPanel(p){
+  document.querySelectorAll(".panel").forEach(x=>x.classList.add("hidden"));
+  document.querySelectorAll(".tab-btn").forEach(x=>x.classList.remove("active"));
+  document.getElementById(`panel-${p}`)?.classList.remove("hidden");
+  document.querySelector(`[data-panel="${p}"]`)?.classList.add("active");
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded",()=>{
+  initData();
+  initMap();
+
+  // Populate selects
+  const catSel=document.getElementById("f-category");
+  CATEGORIES.forEach(c=>{const o=document.createElement("option");o.value=c.id;o.textContent=`${c.emoji} ${c.label}`;catSel.appendChild(o);});
+  const typSel=document.getElementById("f-poster-type");
+  POSTER_TYPES.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=`${t.emoji} ${t.label}`;typSel.appendChild(o);});
+
+  // Subscribe
+  subscribe(ls=>{renderStats();renderFeed(currentFilter);updateMarkers(ls);});
+
+  // Tabs
+  document.querySelectorAll(".tab-btn").forEach(b=>b.addEventListener("click",()=>switchPanel(b.dataset.panel)));
+
+  // Filters
+  document.querySelectorAll(".filter-btn").forEach(b=>b.addEventListener("click",()=>{
+    document.querySelectorAll(".filter-btn").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");currentFilter=b.dataset.filter;renderFeed(currentFilter);
+  }));
+
+  // Post form
+  document.getElementById("use-location")?.addEventListener("click",()=>{
+    if(!navigator.geolocation)return;
+    navigator.geolocation.getCurrentPosition(p=>{
+      document.getElementById("f-lat").value=p.coords.latitude.toFixed(5);
+      document.getElementById("f-lon").value=p.coords.longitude.toFixed(5);
+      document.getElementById("location-status").textContent="✅ Location captured!";
+    },()=>document.getElementById("location-status").textContent="❌ Location denied. Enter manually.");
+  });
+
+  document.getElementById("post-form")?.addEventListener("submit",e=>{
+    e.preventDefault();
+    const hours=parseInt(document.getElementById("f-expires").value)||4;
+    const data={
+      title:document.getElementById("f-title").value.trim(),
+      category:document.getElementById("f-category").value,
+      quantity:document.getElementById("f-quantity").value.trim(),
+      posterType:document.getElementById("f-poster-type").value,
+      posterName:document.getElementById("f-name").value.trim(),
+      phone:document.getElementById("f-phone").value.trim(),
+      address:document.getElementById("f-address").value.trim(),
+      description:document.getElementById("f-desc").value.trim(),
+      lat:parseFloat(document.getElementById("f-lat").value)||DEFAULT_CENTER[0],
+      lon:parseFloat(document.getElementById("f-lon").value)||DEFAULT_CENTER[1],
+      expiresAt:Date.now()+hours*3600000,
+    };
+    if(!data.title||!data.posterName||!data.address){showToast("Please fill all required fields","error");return;}
+    addListing(data);
+    e.target.reset();document.getElementById("location-status").textContent="";
+    showToast("✅ Food listing posted!","success");switchPanel("feed");
+  });
+
+  // Claim modal
+  document.getElementById("claim-cancel")?.addEventListener("click",()=>document.getElementById("claim-modal").classList.add("hidden"));
+  document.getElementById("claim-confirm")?.addEventListener("click",()=>{
+    const name=document.getElementById("claim-name").value.trim();
+    if(!name){showToast("Please enter your name","error");return;}
+    const id=document.getElementById("claim-modal").dataset.listingId;
+    if(claimListing(id,name)){
+      document.getElementById("claim-modal").classList.add("hidden");
+      document.getElementById("claim-name").value="";
+      document.getElementById("claim-phone").value="";
+      showToast("🎉 Claimed! Contact the donor to arrange pickup.","success");
+    }else{showToast("Already claimed!","error");document.getElementById("claim-modal").classList.add("hidden");}
+  });
+  document.getElementById("claim-modal")?.addEventListener("click",e=>{if(e.target===document.getElementById("claim-modal"))document.getElementById("claim-modal").classList.add("hidden");});
+
+  // Locate me
+  document.getElementById("locate-me")?.addEventListener("click",()=>{
+    if(!navigator.geolocation){showToast("Geolocation not supported","error");return;}
+    navigator.geolocation.getCurrentPosition(p=>{
+      map.setView([p.coords.latitude,p.coords.longitude],13);
+      L.circleMarker([p.coords.latitude,p.coords.longitude],{radius:8,fillColor:"#4f8ef7",color:"#fff",weight:2,fillOpacity:0.9}).addTo(map).bindPopup("📍 You are here");
+      showToast("📍 Map centred on your location","info");
+    },()=>showToast("Location access denied","error"));
+  });
+
+  // Auto-refresh
+  setInterval(()=>{renderFeed(currentFilter);renderStats();},60000);
+});
+</script>
+</body>
+</html>
